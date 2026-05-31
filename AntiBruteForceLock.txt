@@ -1,0 +1,311 @@
+#include <Keypad.h>
+#include <LiquidCrystal.h>
+#include <Servo.h>
+ 
+Servo myservo;
+LiquidCrystal lcd(A0, A1, A2, A3, A4, A5);
+ 
+// ---------------- KEYPAD ----------------
+const byte rows = 4;
+const byte cols = 3;
+ 
+char keys[rows][cols] = {
+{'1','2','3'},
+{'4','5','6'},
+{'7','8','9'},
+{'*','0','#'}
+};
+ 
+byte rowPins[rows] = {1,2,3,4};
+byte colPins[cols] = {5,6,7};
+ 
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, rows, cols);
+ 
+// ---------------- PASSWORD ----------------
+char password[5] = "4567";
+char honeyPassword[] = "1234";   // honeytrap password
+char enteredCode[5];
+int indexPos = 0;
+ 
+// ---------------- PINS ----------------
+int buzz = 8;
+ 
+// ---------------- SECURITY ----------------
+int wrongAttempts = 0;
+bool systemLocked = false;
+unsigned long lockStartTime;
+const unsigned long LOCK_TIME = 5000;
+ 
+// ---------------- SETUP ----------------
+void setup()
+{
+lcd.begin(16,2);
+ 
+pinMode(buzz, OUTPUT);
+ 
+myservo.attach(9);
+ 
+displayscreen();
+}
+ 
+// ---------------- LOOP ----------------
+void loop()
+{
+if(systemLocked)
+{
+lcd.setCursor(0,0);
+lcd.print("SYSTEM LOCKED ");
+lcd.setCursor(0,1);
+lcd.print("WAIT 30 SECS ");
+ 
+if(millis() - lockStartTime >= LOCK_TIME)
+{
+systemLocked = false;
+wrongAttempts = 0;
+ 
+lcd.clear();
+displayscreen();
+}
+return;
+}
+ 
+char key = keypad.getKey();
+ 
+if(key != NO_KEY)
+{
+keypress();
+ 
+if(key == '#')
+{
+changePassword();
+return;
+}
+ 
+if(key == '*')
+return;
+ 
+enteredCode[indexPos++] = key;
+ 
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("PASSWORD:");
+lcd.setCursor(0,1);
+ 
+for(int i=0;i<indexPos;i++)
+lcd.print('*');
+ 
+if(indexPos == 4)
+{
+enteredCode[4] = '\0';
+ 
+// -------- HONEYTRAP CHECK --------
+if(strcmp(enteredCode,honeyPassword)==0)
+{
+honeyTrap();
+}
+ 
+// -------- NORMAL PASSWORD --------
+else if(strcmp(enteredCode,password)==0)
+{
+wrongAttempts = 0;
+ 
+unlockdoor();
+relockCountdown();
+lockdoor();
+}
+ 
+else
+{
+wrongAttempts++;
+incorrect();
+ 
+if(wrongAttempts >=2)
+{
+alarmMode();
+systemLocked = true;
+lockStartTime = millis();
+}
+}
+ 
+indexPos = 0;
+memset(enteredCode,0,sizeof(enteredCode));
+ 
+delay(1000);
+lcd.clear();
+displayscreen();
+}
+}
+}
+ 
+// ---------------- CHANGE PASSWORD ----------------
+void changePassword()
+{
+char oldPass[5];
+int pos=0;
+ 
+lcd.clear();
+lcd.print("OLD PASSWORD");
+ 
+while(pos<4)
+{
+char key = keypad.getKey();
+if(key)
+{
+oldPass[pos++] = key;
+lcd.setCursor(pos-1,1);
+lcd.print('*');
+}
+}
+ 
+oldPass[4]='\0';
+ 
+if(strcmp(oldPass,password)==0)
+{
+lcd.clear();
+lcd.print("NEW PASSWORD");
+ 
+pos=0;
+ 
+while(pos<4)
+{
+char key = keypad.getKey();
+if(key)
+{
+password[pos++] = key;
+lcd.setCursor(pos-1,1);
+lcd.print('*');
+}
+}
+ 
+password[4]='\0';
+ 
+lcd.clear();
+lcd.print("PASS UPDATED");
+delay(2000);
+}
+else
+{
+lcd.clear();
+lcd.print("WRONG PASSWORD");
+delay(2000);
+}
+ 
+lcd.clear();
+displayscreen();
+}
+ 
+// ---------------- HONEYTRAP ----------------
+void honeyTrap()
+{
+lcd.clear();
+lcd.print("ACCESS GRANTED");
+delay(1500);
+ 
+lcd.clear();
+lcd.print("SECURITY ALERT");
+ 
+for(int i=0;i<20;i++)
+{
+digitalWrite(buzz,HIGH);
+delay(150);
+digitalWrite(buzz,LOW);
+delay(150);
+}
+}
+ 
+// ---------------- BUZZER KEYPRESS ----------------
+void keypress()
+{
+digitalWrite(buzz,HIGH);
+delay(40);
+digitalWrite(buzz,LOW);
+}
+ 
+// ---------------- WRONG PASSWORD ----------------
+void incorrect()
+{
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("WRONG PASSWORD");
+ 
+lcd.setCursor(0,1);
+lcd.print(2-wrongAttempts);
+lcd.print(" ATTEMPTS");
+ 
+digitalWrite(buzz,HIGH);
+ 
+delay(1000);
+ 
+digitalWrite(buzz,LOW);
+}
+ 
+// ---------------- ALARM ----------------
+void alarmMode()
+{
+lcd.clear();
+lcd.print("SECURITY ALERT");
+ 
+for(int i=0;i<10;i++)
+{
+digitalWrite(buzz,HIGH);
+delay(200);
+digitalWrite(buzz,LOW);
+delay(200);
+}
+}
+ 
+// ---------------- UNLOCK DOOR ----------------
+void unlockdoor()
+{
+lcd.clear();
+lcd.print("ACCESS GRANTED");
+ 
+for(int pos=180;pos>=0;pos-=5)
+{
+myservo.write(pos);
+delay(10);
+}
+}
+ 
+// ---------------- RELOCK COUNTDOWN ----------------
+void relockCountdown()
+{
+for(int i=5;i>0;i--)
+{
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("RELOCK IN");
+ 
+lcd.setCursor(0,1);
+lcd.print(i);
+ 
+digitalWrite(buzz,HIGH);
+delay(100);
+digitalWrite(buzz,LOW);
+ 
+delay(900);
+}
+}
+ 
+// ---------------- LOCK DOOR ----------------
+void lockdoor()
+{
+for(int pos=0;pos<=180;pos+=5)
+{
+myservo.write(pos);
+delay(15);
+}
+ 
+lcd.clear();
+lcd.print("DOOR LOCKED");
+}
+ 
+// ---------------- DISPLAY SCREEN ----------------
+void displayscreen()
+{
+lcd.setCursor(0,0);
+lcd.print("ENTER PASSWORD");
+ 
+lcd.setCursor(0,1);
+lcd.print("ANTI BRUTE FORCE LOCK");
+}
